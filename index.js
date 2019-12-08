@@ -239,13 +239,14 @@ Blinds.prototype = {
 	},
 
 	stateChange2: function (delta) {
+		this.log("debug pin: " + this.pushButtonPin);
 		if (this.postponeId === null) {
 			this.postponeId = setTimeout(function () {
 				this.postponeId = null;
 
-				this.log("debug pin: " + this.pin);
+				this.log("debug pin: " + this.pushButtonPin);
 
-				var state = wpi.digitalRead(this.pin);
+				var state = wpi.digitalRead(this.pushButtonPin);
 				this.stateCharac.updateValue(state === this.INPUT_ACTIVE ? this.ON_STATE : this.OFF_STATE);
 				if (this.occupancy) {
 					this.occupancyUpdate(state);
