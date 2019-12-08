@@ -120,7 +120,7 @@ function Blinds(accesory, log, config) {
 
 	wpi.pinMode(this.pushButtonPin, wpi.INPUT);
 	wpi.pullUpDnControl(this.pushButtonPin, this.pullUp ? wpi.PUD_UP : wpi.PUD_OFF);
-	wpi.wiringPiISR(this.pushButtonPin, wpi.INT_EDGE_BOTH, this.stateChange.bind(this));
+	wpi.wiringPiISR(this.pushButtonPin, wpi.INT_EDGE_BOTH, this.stateChange2.bind(this));
 
 	this.stateCharac = this.service.getCharacteristic(Characteristic.PositionState)
 		.updateValue(Characteristic.PositionState.STOPPED);
@@ -234,6 +234,22 @@ Blinds.prototype = {
 				this.targetCharac.updateValue(this.initState);
 				this.positionCharac.updateValue(this.initState);
 				this.stateCharac.updateValue(Characteristic.PositionState.STOPPED);
+			}.bind(this), this.postpone);
+		}
+	},
+
+	stateChange2: function (delta) {
+		if (this.postponeId === null) {
+			this.postponeId = setTimeout(function () {
+				this.postponeId = null;
+
+				this.log("debug pin: " + this.pin);
+
+				var state = wpi.digitalRead(this.pin);
+				this.stateCharac.updateValue(state === this.INPUT_ACTIVE ? this.ON_STATE : this.OFF_STATE);
+				if (this.occupancy) {
+					this.occupancyUpdate(state);
+				}
 			}.bind(this), this.postpone);
 		}
 	}
