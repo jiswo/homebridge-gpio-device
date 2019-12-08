@@ -27,7 +27,6 @@ function DeviceAccesory(log, config) {
 	var infoService = new Service.AccessoryInformation();
 	infoService.setCharacteristic(Characteristic.Manufacturer, 'Raspberry');
 	infoService.setCharacteristic(Characteristic.Model, config.type);
-	//infoService.setCharacteristic(Characteristic.SerialNumber, 'Raspberry');
 	this.services.push(infoService);
 
 	wpi.setup('wpi');
@@ -85,7 +84,6 @@ DeviceAccesory.prototype = {
 	}
 };
 
-
 function Blinds(accesory, log, config) {
 	if (config.pins.length !== 2)
 		throw new Error("'pins' parameter must contains 2 pin numbers");
@@ -102,7 +100,6 @@ function Blinds(accesory, log, config) {
 	this.invertedInputs = config.invertedInputs || false;
 	this.postpone = config.postpone || 100;
 	this.pullUp = config.pullUp !== undefined ? config.pullUp : true;
-	this.pushButtonPin = config.pushButtonPin;
 
 	this.OUTPUT_ACTIVE = this.inverted ? wpi.LOW : wpi.HIGH;
 	this.OUTPUT_INACTIVE = this.inverted ? wpi.HIGH : wpi.LOW;
@@ -117,10 +114,6 @@ function Blinds(accesory, log, config) {
 	wpi.pinMode(this.closePin, wpi.OUTPUT);
 	wpi.digitalWrite(this.openPin, this.OUTPUT_INACTIVE);
 	wpi.digitalWrite(this.closePin, this.OUTPUT_INACTIVE);
-
-	wpi.pinMode(this.pushButtonPin, wpi.INPUT);
-	wpi.pullUpDnControl(this.pushButtonPin, this.pullUp ? wpi.PUD_UP : wpi.PUD_OFF);
-	wpi.wiringPiISR(this.pushButtonPin, wpi.INT_EDGE_BOTH, this.stateChange2.bind(this));
 
 	this.stateCharac = this.service.getCharacteristic(Characteristic.PositionState)
 		.updateValue(Characteristic.PositionState.STOPPED);
@@ -236,28 +229,8 @@ Blinds.prototype = {
 				this.stateCharac.updateValue(Characteristic.PositionState.STOPPED);
 			}.bind(this), this.postpone);
 		}
-	},
-
-	stateChange2: function (delta) {
-		this.log("debug pin: " + this.pushButtonPin);
-		if (this.postponeId === null) {
-			this.postponeId = setTimeout(function () {
-				this.postponeId = null;
-
-				this.log("debug pin: " + this.pushButtonPin);
-
-				var state = wpi.digitalRead(this.pushButtonPin);
-				this.stateCharac.updateValue(state === this.INPUT_ACTIVE ? this.ON_STATE : this.OFF_STATE);
-				if (this.occupancy) {
-					this.occupancyUpdate(state);
-				}
-			}.bind(this), this.postpone);
-		}
 	}
 };
-
-
-
 
 function DigitalInput(accesory, log, config) {
 	this.log = log;
