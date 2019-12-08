@@ -57,6 +57,9 @@ function DeviceAccesory(log, config) {
 		case 'WindowCovering':
 			this.device = new RollerShutter(this, log, config);
 			break;
+		case 'Blinds':
+			this.device = new Blinds(this, log, config);
+			break;
 		case 'GarageDoorOpener':
 			this.device = new GarageDoor(this, log, config);
 			break;
@@ -81,6 +84,207 @@ DeviceAccesory.prototype = {
 		this.services.push(service);
 	}
 };
+
+
+function Blinds(accesory, log, config) {
+	if (config.pins.length !== 2) throw new Error("'pins' parameter must contains 2 pin numbers");
+
+	this.log = log;
+
+	this.inverted = config.inverted || false;
+	this.initPosition = config.initPosition || 99;
+	this.openPin = config.pins[0];
+	this.closePin = config.pins[1];
+	this.restoreTarget = config.restoreTarget || false;
+	this.duration = (config.duration || 20) * 10;
+	this.invertStopPin = config.invertStopPin || false;
+	this.openSensorPin = config.openSensorPin !== undefined ? config.openSensorPin : null;
+	this.closeSensorPin = config.closeSensorPin !== undefined ? config.closeSensorPin : null;
+	this.invertedInputs = config.invertedInputs || false;
+	this.postpone = config.postpone || 100;
+	this.pullUp = config.pullUp !== undefined ? config.pullUp : true;
+
+	this.OUTPUT_ACTIVE = this.inverted ? wpi.LOW : wpi.HIGH;
+	this.OUTPUT_INACTIVE = this.inverted ? wpi.HIGH : wpi.LOW;
+
+	this.INPUT_ACTIVE = this.invertedInputs ? wpi.HIGH : wpi.LOW;
+	this.INPUT_INACTIVE = this.invertedInputs ? wpi.LOW : wpi.HIGH;
+
+	this.service = new Service[config.type](config.name);
+	this.shift = { id: null, start: 0, value: 0, target: 0 };
+
+	wpi.pinMode(this.openPin, wpi.OUTPUT);
+	wpi.pinMode(this.closePin, wpi.OUTPUT);
+	wpi.digitalWrite(this.openPin, this.OUTPUT_INACTIVE);
+	wpi.digitalWrite(this.closePin, this.OUTPUT_INACTIVE);
+
+	this.stateCharac = this.service.getCharacteristic(Characteristic.PositionState)
+		.updateValue(Characteristic.PositionState.STOPPED);
+	this.positionCharac = this.service.getCharacteristic(Characteristic.CurrentPosition);
+	this.targetCharac = this.service.getCharacteristic(Characteristic.TargetPosition)
+		.on('set', this.setPosition.bind(this));
+
+	// Configure inputs
+	if (this.openSensorPin !== null) {
+		wpi.pinMode(this.openSensorPin, wpi.INPUT);
+		wpi.pullUpDnControl(this.openSensorPin, this.pullUp ? wpi.PUD_UP : wpi.PUD_OFF);
+		wpi.wiringPiISR(this.openSensorPin, wpi.INT_EDGE_BOTH, this.stateChange.bind(this, this.openSensorPin));
+	}
+
+	if (this.closeSensorPin !== null) {
+		wpi.pinMode(this.closeSensorPin, wpi.INPUT);
+		wpi.pullUpDnControl(this.closeSensorPin, this.pullUp ? wpi.PUD_UP : wpi.PUD_OFF);
+		wpi.wiringPiISR(this.closeSensorPin, wpi.INT_EDGE_BOTH, this.stateChange.bind(this, this.closeSensorPin));
+	}
+
+	// Default position if no sensors
+	var defaultPosition = this.initPosition;
+	if (this.closeSensorPin !== null) {
+		let state = wpi.digitalRead(this.closeSensorPin);
+		if (state === this.INPUT_ACTIVE) {
+			defaultPosition = 0;
+		}
+	}
+
+	if (this.openSensorPin !== null) {
+		let state = wpi.digitalRead(this.openSensorPin);
+		if (state === this.INPUT_ACTIVE) {
+			defaultPosition = 100;
+		}
+	}
+
+	this.positionCharac.updateValue(defaultPosition);
+	this.targetCharac.updateValue(defaultPosition);
+
+	accesory.addService(this.service);
+}
+
+Blinds.prototype = {
+	minMax: function (value) {
+		return Math.max(Math.min(value, 0), 100);
+	},
+
+	setPosition: function (value, callback) {
+		var currentPos = this.positionCharac.value;
+
+		// Nothing to do
+		if (value === currentPos) {
+			callback();
+			return;
+		}
+
+		if (this.shift.id) {
+			var diff = Date.now() - this.shift.start;
+			if (diff > 1000) {
+				// Operation already in progress. Cancel timer and update computed current position
+				clearTimeout(this.shift.id);
+				this.shift.id = null;
+				var moved = Math.round(diff / this.duration);
+				currentPos += Math.sign(this.shift.value) * moved;
+				this.positionCharac.updateValue(this.minMax(currentPos));
+			} else {
+				callback();
+				return;
+			}
+		}
+
+		this.log("Requesting shifting " + currentPos + " -> " + value);
+
+		var newShiftValue = value - currentPos;
+		if (Math.sign(newShiftValue) !== Math.sign(this.shift.value)) { // Change shifting direction
+			this.pinPulse(newShiftValue, true);
+		}
+		this.shift.value = newShiftValue;
+		this.shift.target = value;
+		let duration = Math.abs(this.shift.value) * this.duration;
+		this.shift.id = setTimeout(this.motionEnd.bind(this), duration);
+		callback();
+	},
+
+	motionEnd: function () {
+		if (this.shift.target < 100 && this.shift.target > 0) {
+			if (this.invertStopPin === true) {
+				// stop shutter by pulsing the opposite pin
+				var pin = this.shift.value > 0 ? this.closePin : this.openPin;
+				wpi.digitalWrite(pin, this.OUTPUT_ACTIVE);
+				wpi.delay(this.duration);
+				wpi.digitalWrite(pin, this.OUTPUT_INACTIVE);
+				this.log("Pulse pin " + pin + " to stop motion");
+			} else {
+				this.pinPulse(this.shift.value, false); // Stop shutter by pulsing same pin another time
+			}
+		}
+
+		if (this.restoreTarget) {
+			this.positionCharac.updateValue(this.initPosition);
+			this.targetCharac.updateValue(this.initPosition);
+		} else {
+			this.positionCharac.updateValue(this.shift.target);
+		}
+		this.log("Shifting ends at " + this.shift.target);
+		this.shift.id = null;
+		this.shift.start = 0;
+		this.shift.value = 0;
+		this.shift.target = 0;
+	},
+
+	pinPulse: function (shiftValue, start) {
+		var pin = shiftValue > 0 ? this.openPin : this.closePin;
+		var oppositePin = shiftValue > 0 ? this.closePin : this.openPin;
+		this.shift.start = Date.now();
+		if (this.duration) {
+			this.log('Pulse pin ' + pin);
+			wpi.digitalWrite(pin, this.OUTPUT_ACTIVE);
+			wpi.delay(this.duration);
+			wpi.digitalWrite(pin, this.OUTPUT_INACTIVE);
+		} else {
+			if (start) {
+				this.log('Start ' + pin + ' / Stop ' + oppositePin);
+				wpi.digitalWrite(oppositePin, this.OUTPUT_INACTIVE);
+				wpi.digitalWrite(pin, this.OUTPUT_ACTIVE);
+			} else {
+				this.log('Stop ' + pin);
+				wpi.digitalWrite(pin, this.OUTPUT_INACTIVE);
+			}
+		}
+	},
+
+	stateChange: function (pin, delta) {
+		if (this.unbouncingID === null) {
+			this.unbouncingID = setTimeout(function () {
+				this.unbouncingID = null;
+
+				var state = pin ? wpi.digitalRead(pin) : 0;
+				if (pin === this.closeSensorPin) {
+					if (state === this.INPUT_ACTIVE) {
+						clearTimeout(this.shift.id);
+						this.shift.id = null;
+						this.targetCharac.updateValue(0);
+						this.positionCharac.updateValue(0);
+					}
+					this.stateCharac.updateValue(state === this.INPUT_ACTIVE ? Characteristic.PositionState.STOPPED : Characteristic.PositionState.INCREASING);
+					this.log("closeSensorPin state change " + state);
+				} else if (pin === this.openSensorPin) {
+					if (state === this.INPUT_ACTIVE) {
+						clearTimeout(this.shift.id);
+						this.shift.id = null;
+						this.targetCharac.updateValue(100);
+						this.positionCharac.updateValue(100);
+					}
+					this.stateCharac.updateValue(state === this.INPUT_ACTIVE ? Characteristic.PositionState.STOPPED : Characteristic.PositionState.DECREASING);
+					this.log("openSensorPin state change " + state);
+				} else {
+					this.targetCharac.updateValue(this.initState);
+					this.positionCharac.updateValue(this.initState);
+					this.stateCharac.updateValue(Characteristic.PositionState.STOPPED);
+				}
+			}.bind(this), this.postpone);
+		}
+	}
+};
+
+
+
 
 function DigitalInput(accesory, log, config) {
 	this.log = log;
