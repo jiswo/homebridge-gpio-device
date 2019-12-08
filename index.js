@@ -87,7 +87,8 @@ DeviceAccesory.prototype = {
 
 
 function Blinds(accesory, log, config) {
-	if (config.pins.length !== 2) throw new Error("'pins' parameter must contains 2 pin numbers");
+	if (config.pins.length !== 2)
+		throw new Error("'pins' parameter must contains 2 pin numbers");
 
 	this.log = log;
 
@@ -101,6 +102,7 @@ function Blinds(accesory, log, config) {
 	this.invertedInputs = config.invertedInputs || false;
 	this.postpone = config.postpone || 100;
 	this.pullUp = config.pullUp !== undefined ? config.pullUp : true;
+	this.pushButtonPin = config.pushButtonPin;
 
 	this.OUTPUT_ACTIVE = this.inverted ? wpi.LOW : wpi.HIGH;
 	this.OUTPUT_INACTIVE = this.inverted ? wpi.HIGH : wpi.LOW;
@@ -115,6 +117,10 @@ function Blinds(accesory, log, config) {
 	wpi.pinMode(this.closePin, wpi.OUTPUT);
 	wpi.digitalWrite(this.openPin, this.OUTPUT_INACTIVE);
 	wpi.digitalWrite(this.closePin, this.OUTPUT_INACTIVE);
+
+	wpi.pinMode(this.pushButtonPin, wpi.INPUT);
+	wpi.pullUpDnControl(this.pushButtonPin, this.pullUp ? wpi.PUD_UP : wpi.PUD_OFF);
+	wpi.wiringPiISR(this.pushButtonPin, wpi.INT_EDGE_BOTH, this.stateChange.bind(this));
 
 	this.stateCharac = this.service.getCharacteristic(Characteristic.PositionState)
 		.updateValue(Characteristic.PositionState.STOPPED);
