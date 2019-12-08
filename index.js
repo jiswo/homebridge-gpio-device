@@ -96,10 +96,8 @@ function Blinds(accesory, log, config) {
 	this.openPin = config.pins[0];
 	this.closePin = config.pins[1];
 	this.restoreTarget = config.restoreTarget || false;
-	this.duration = (config.duration || 20) * 10;
+	this.duration = config.duration || 4000;
 	this.invertStopPin = config.invertStopPin || false;
-	this.openSensorPin = config.openSensorPin !== undefined ? config.openSensorPin : null;
-	this.closeSensorPin = config.closeSensorPin !== undefined ? config.closeSensorPin : null;
 	this.invertedInputs = config.invertedInputs || false;
 	this.postpone = config.postpone || 100;
 	this.pullUp = config.pullUp !== undefined ? config.pullUp : true;
@@ -110,7 +108,6 @@ function Blinds(accesory, log, config) {
 	this.INPUT_ACTIVE = this.invertedInputs ? wpi.HIGH : wpi.LOW;
 	this.INPUT_INACTIVE = this.invertedInputs ? wpi.LOW : wpi.HIGH;
 
-	//this.service = new Service[config.type](config.name);
 	this.service = new Service.WindowCovering(config.name);
 	this.shift = { id: null, start: 0, value: 0, target: 0 };
 
@@ -125,35 +122,8 @@ function Blinds(accesory, log, config) {
 	this.targetCharac = this.service.getCharacteristic(Characteristic.TargetPosition)
 		.on('set', this.setPosition.bind(this));
 
-	// Configure inputs
-	if (this.openSensorPin !== null) {
-		wpi.pinMode(this.openSensorPin, wpi.INPUT);
-		wpi.pullUpDnControl(this.openSensorPin, this.pullUp ? wpi.PUD_UP : wpi.PUD_OFF);
-		wpi.wiringPiISR(this.openSensorPin, wpi.INT_EDGE_BOTH, this.stateChange.bind(this, this.openSensorPin));
-	}
-
-	if (this.closeSensorPin !== null) {
-		wpi.pinMode(this.closeSensorPin, wpi.INPUT);
-		wpi.pullUpDnControl(this.closeSensorPin, this.pullUp ? wpi.PUD_UP : wpi.PUD_OFF);
-		wpi.wiringPiISR(this.closeSensorPin, wpi.INT_EDGE_BOTH, this.stateChange.bind(this, this.closeSensorPin));
-	}
-
 	// Default position if no sensors
 	var defaultPosition = this.initPosition;
-	if (this.closeSensorPin !== null) {
-		let state = wpi.digitalRead(this.closeSensorPin);
-		if (state === this.INPUT_ACTIVE) {
-			defaultPosition = 0;
-		}
-	}
-
-	if (this.openSensorPin !== null) {
-		let state = wpi.digitalRead(this.openSensorPin);
-		if (state === this.INPUT_ACTIVE) {
-			defaultPosition = 100;
-		}
-	}
-
 	this.positionCharac.updateValue(defaultPosition);
 	this.targetCharac.updateValue(defaultPosition);
 
@@ -254,31 +224,10 @@ Blinds.prototype = {
 		if (this.unbouncingID === null) {
 			this.unbouncingID = setTimeout(function () {
 				this.unbouncingID = null;
-
 				var state = pin ? wpi.digitalRead(pin) : 0;
-				if (pin === this.closeSensorPin) {
-					if (state === this.INPUT_ACTIVE) {
-						clearTimeout(this.shift.id);
-						this.shift.id = null;
-						this.targetCharac.updateValue(0);
-						this.positionCharac.updateValue(0);
-					}
-					this.stateCharac.updateValue(state === this.INPUT_ACTIVE ? Characteristic.PositionState.STOPPED : Characteristic.PositionState.INCREASING);
-					this.log("closeSensorPin state change " + state);
-				} else if (pin === this.openSensorPin) {
-					if (state === this.INPUT_ACTIVE) {
-						clearTimeout(this.shift.id);
-						this.shift.id = null;
-						this.targetCharac.updateValue(100);
-						this.positionCharac.updateValue(100);
-					}
-					this.stateCharac.updateValue(state === this.INPUT_ACTIVE ? Characteristic.PositionState.STOPPED : Characteristic.PositionState.DECREASING);
-					this.log("openSensorPin state change " + state);
-				} else {
-					this.targetCharac.updateValue(this.initState);
-					this.positionCharac.updateValue(this.initState);
-					this.stateCharac.updateValue(Characteristic.PositionState.STOPPED);
-				}
+				this.targetCharac.updateValue(this.initState);
+				this.positionCharac.updateValue(this.initState);
+				this.stateCharac.updateValue(Characteristic.PositionState.STOPPED);
 			}.bind(this), this.postpone);
 		}
 	}
