@@ -96,7 +96,7 @@ function Blinds(accesory, log, config) {
 	this.openPin = config.pins[0];
 	this.closePin = config.pins[1];
 	this.restoreTarget = config.restoreTarget || false;
-	this.duration = config.duration || 4000;
+	this.duration = config.duration || 4; // in seconds
 	this.invertStopPin = config.invertStopPin || false;
 	this.invertedInputs = config.invertedInputs || false;
 	this.postpone = config.postpone || 100;
@@ -178,7 +178,7 @@ Blinds.prototype = {
 				// stop shutter by pulsing the opposite pin
 				var pin = this.shift.value > 0 ? this.closePin : this.openPin;
 				wpi.digitalWrite(pin, this.OUTPUT_ACTIVE);
-				wpi.delay(this.duration);
+				wpi.delay(this.duration * 1000);
 				wpi.digitalWrite(pin, this.OUTPUT_INACTIVE);
 				this.log("Pulse pin " + pin + " to stop motion");
 			} else {
@@ -206,7 +206,7 @@ Blinds.prototype = {
 		if (this.duration) {
 			this.log('Pulse pin ' + pin);
 			wpi.digitalWrite(pin, this.OUTPUT_ACTIVE);
-			wpi.delay(this.duration);
+			wpi.delay(this.duration * 1000);
 			wpi.digitalWrite(pin, this.OUTPUT_INACTIVE);
 		} else {
 			if (start) {
