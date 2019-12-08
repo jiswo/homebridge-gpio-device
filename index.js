@@ -110,7 +110,8 @@ function Blinds(accesory, log, config) {
 	this.INPUT_ACTIVE = this.invertedInputs ? wpi.HIGH : wpi.LOW;
 	this.INPUT_INACTIVE = this.invertedInputs ? wpi.LOW : wpi.HIGH;
 
-	this.service = new Service[config.type](config.name);
+	//this.service = new Service[config.type](config.name);
+	this.service = new Service.WindowCovering(config.name);
 	this.shift = { id: null, start: 0, value: 0, target: 0 };
 
 	wpi.pinMode(this.openPin, wpi.OUTPUT);
