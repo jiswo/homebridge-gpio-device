@@ -1012,11 +1012,11 @@ function ProgrammableSwitch(accesory, log, config) {
 
 ProgrammableSwitch.prototype = {
 	stateChange: function (delta) {
-		if (this.postponeId === null) {
+		if (this.postponeId == null) {
 			this.postponeId = setTimeout(function () {
 				this.postponeId = null;
 				var state = wpi.digitalRead(this.pin);
-				if (state === this.INPUT_ACTIVE) {
+				if (state == this.INPUT_ACTIVE) {
 					this.longPressPending = setTimeout(function () {
 						this.eventCharac.updateValue(Characteristic.ProgrammableSwitchEvent.LONG_PRESS);
 						this.longPressPending = null;
@@ -1043,4 +1043,4 @@ ProgrammableSwitch.prototype = {
 			}.bind(this), this.postpone);
 		}
 	}
-};
+}
